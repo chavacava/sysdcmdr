@@ -227,6 +227,9 @@ func (l *UnitList) Update(filter string) {
 
 		block += line + "\n"
 	}
+	if block != "" {
+		l.addUnit(NewUnitFromShowOutputBlock(block))
+	}
 }
 
 func (l *UnitList) Refresh() {
@@ -313,7 +316,7 @@ type StatusBar struct {
 
 func NewStatusBar() *StatusBar {
 	sb := StatusBar{tview.NewTextView()}
-	sb.SetTitle(" Last command/error ").SetBorder(true)
+	sb.SetTitle(" Status ").SetBorder(true).SetTitleAlign(tview.AlignLeft)
 	return &sb
 }
 
