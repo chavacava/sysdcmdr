@@ -15,21 +15,19 @@ import (
 
 func main() {
 	defaultFilter := flag.String("filter", "", "unit filter to apply at startup")
-	extraProperties := flag.String("props", "", "unit properties to display")
+	extraProperties := flag.String("props", "", "unit properties to display, set to 'all' to display all properties")
 	flag.Parse()
 
 	// Widget creation
 	app := tview.NewApplication()
 	filterTxtbox := tview.NewInputField().SetText(*defaultFilter)
 	display := tview.NewTextView()
-	errorDisplay := tview.NewTextView()
-	commander := Commander{errorDisplay}
+	statusBar := NewStatusBar()
+	commander := Commander{statusBar}
 	unitList := NewUnitList(&commander, *defaultFilter, *extraProperties)
 
 	// Helper to handle the focus ammong widgets
 	focusHandler := NewFocusHandler(append([]tview.Primitive{}, filterTxtbox, unitList, display), app)
-
-	errorDisplay.SetTitle(" Last command/error ").SetBorder(true)
 
 	// Layout of widgets
 	flex := tview.NewFlex()
@@ -39,7 +37,7 @@ func main() {
 		0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(display, 0, 6, false).
-			AddItem(errorDisplay, 5, 1, false),
+			AddItem(statusBar, 5, 1, false),
 			0, 3, false)
 
 	// Visual settings for widgets
@@ -177,10 +175,14 @@ type UnitList struct {
 }
 
 func NewUnitList(commander *Commander, filter string, extraProperties string) *UnitList {
-	propertiesQuery := "ActiveState,SubState,Names"
-	if extraProperties != "" {
+	propertiesQuery := " --property=ActiveState,SubState,Names"
+	switch {
+	case extraProperties == "all":
+		propertiesQuery = ""
+	case extraProperties != "":
 		propertiesQuery += "," + extraProperties
 	}
+
 	result := UnitList{
 		tview.NewList().ShowSecondaryText(false),
 		map[string]Unit{},
@@ -207,7 +209,7 @@ func (l *UnitList) Update(filter string) {
 	l.currentFilter = filter
 	l.Clear()
 	filter = "*" + filter + "*"
-	out, err := l.commander.Exec("systemctl", fmt.Sprintf("show --property=%s -t service %s", l.propertiesQuery, filter))
+	out, err := l.commander.Exec("systemctl", fmt.Sprintf("show%s -t service %s", l.propertiesQuery, filter))
 	if err != nil {
 		return
 	}
@@ -287,19 +289,42 @@ func (u Unit) ColorizedString() string {
 }
 
 type Commander struct {
-	errorDisplay *tview.TextView
+	statusBar *StatusBar
 }
 
 func (c Commander) Exec(command string, args string) (out []byte, err error) {
 	cmdArgs := strings.Split(args, " ")
 	out, err = exec.Command(command, cmdArgs...).CombinedOutput()
 	txt := command + " " + args + "\n"
-	c.errorDisplay.SetBackgroundColor(tcell.ColorGreen)
 	if err != nil {
 		txt += string(out)
-		c.errorDisplay.SetBackgroundColor(tcell.ColorRed)
+		c.statusBar.Error(txt)
+		return
 	}
-	c.errorDisplay.SetText(txt)
+
+	c.statusBar.Info(txt)
 
 	return
+}
+
+type StatusBar struct {
+	*tview.TextView
+}
+
+func NewStatusBar() *StatusBar {
+	sb := StatusBar{tview.NewTextView()}
+	sb.SetTitle(" Last command/error ").SetBorder(true)
+	return &sb
+}
+
+func (sb StatusBar) Error(msg string) {
+	sb.SetBackgroundColor(tcell.ColorRed)
+	sb.SetTextColor(tcell.ColorWhite)
+	sb.SetText(msg)
+}
+
+func (sb StatusBar) Info(msg string) {
+	sb.SetBackgroundColor(tcell.ColorBlack)
+	sb.SetTextColor(tcell.ColorLightGray)
+	sb.SetText(msg)
 }
